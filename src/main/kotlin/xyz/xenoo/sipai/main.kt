@@ -56,7 +56,7 @@ fun main(args: Array<String>) {
     val textStart = markerStart + "◇◇◇".length
     val markerEnd = response.body().indexOf("◇◇◇", textStart)
 
-    val answer = response.body().substring(textStart, markerEnd)
+    val answer = response.body().substring(textStart, markerEnd).replace("\\n", "\n").replace("\\\"", "\"").replace("*", "")
     println("SipAI: $answer")
     if (flags.verbose) {
         println("${flags.model}, ${flags.reasoning}")
