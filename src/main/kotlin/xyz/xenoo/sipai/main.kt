@@ -8,15 +8,68 @@ import java.time.LocalDate
 import java.time.LocalDateTime
 import kotlin.system.exitProcess
 
+
+data class FlagResult(
+    val systemPrompt: String,
+    val model: String,
+    val reasoning: String,
+    val verbose: Boolean,
+    val thinking: String,
+    val questionParts: List<String>
+)
+
 fun main(args: Array<String>) {
     val client = HttpClient.newHttpClient()
 
-    // data
+
+    flagManager(args)
+    val flags = flagManager(args)
+
+    val jsonBody = """
+        {
+            "model": "${flags.model}",
+            "messages": [
+                {"role": "system", "content": "${flags.systemPrompt}"},
+                {"role": "user", "content": "${flags.questionParts.joinToString(" ")}"}
+            ],
+            ${flags.thinking}
+        }
+    """.trimIndent()
+
+    val request =
+        HttpRequest.newBuilder()
+            .uri(URI.create("https://api.deepseek.com/chat/completions"))
+            .header("Content-Type", "application/json")
+            .header("Authorization", "Bearer ${System.getenv("DEEPSEEK_API_KEY")}")
+            .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
+            .build()
+
+
+    val response = client.send(request, HttpResponse.BodyHandlers.ofString())
+    if (response.statusCode() != 200) {
+        println(response.body())
+        exitProcess(1)
+    }
+
+
+    val markerStart = response.body().indexOf("◇◇◇")
+    val textStart = markerStart + "◇◇◇".length
+    val markerEnd = response.body().indexOf("◇◇◇", textStart)
+
+    val answer = response.body().substring(textStart, markerEnd)
+    println("SipAI: $answer")
+    if (flags.verbose) {
+        println("${flags.model}, ${flags.reasoning}")
+    }
+
+
+}
+
+fun flagManager(args: Array<String>): FlagResult {
     val date = LocalDate.now()
     val time = LocalDateTime.now()
-
-    //sysprompt
-    var systemPrompt = "You are a onetime use agent. You answer the Question without any filler words. No after Questions. If the User answers in a way that requires a Question on your side just ignore it and say you can't do it. Start and end your messages with ◇◇◇. Here are some information's: Current date: ${date}, Current time: ${time}. This is the users Question:"
+    var systemPrompt =
+        "You are a onetime use agent. You answer the Question without any filler words. No after Questions. If the User answers in a way that requires a Question on your side just ignore it and say you can't do it. Start and end your messages with ◇◇◇. Here are some information's: Current date: ${date}, Current time: ${time}. This is the users Question:"
 
     var model = "deepseek-v4-flash"
     var reasoning = "low"
@@ -69,48 +122,5 @@ fun main(args: Array<String>) {
         }
         i++
     }
-
-
-
-    val jsonBody = """
-        {
-            "model": "$model",
-            "messages": [
-                {"role": "system", "content": "$systemPrompt"},
-                {"role": "user", "content": "${questionParts.joinToString(" ")}"}
-            ],
-            $thinking
-        }
-    """.trimIndent()
-
-    val request =
-        HttpRequest.newBuilder()
-        .uri(URI.create("https://api.deepseek.com/chat/completions"))
-        .header("Content-Type", "application/json")
-        .header("Authorization", "Bearer ${System.getenv("DEEPSEEK_API_KEY")}")
-        .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
-        .build()
-
-
-    val response = client.send(request, HttpResponse.BodyHandlers.ofString())
-    if (response.statusCode() != 200) {
-        println("Error: ${response.statusCode()}")
-        println(response.body())
-        exitProcess(1)
-    }
-
-
-    val markerStart = response.body().indexOf("◇◇◇")
-    val textStart = markerStart + "◇◇◇".length
-    val markerEnd = response.body().indexOf("◇◇◇", textStart)
-
-    val answer = response.body().substring(textStart, markerEnd)
-    println("SipAI: $answer")
-    if (verbose) {
-        println("$model, $reasoning")
-    }
-
-
-
-
+    return FlagResult(systemPrompt, model, reasoning, verbose, thinking, questionParts)
 }
